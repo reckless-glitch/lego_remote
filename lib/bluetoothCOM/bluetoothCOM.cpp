@@ -18,6 +18,8 @@ float *speed;
 float *steer;
  bool *boost; 
  bool *lights;
+ bool BTreceived = false;
+ bool BTconnected =false;
 
 void processMessage(String *message)
 {
@@ -96,8 +98,9 @@ void bluetoothUpdate()
 {
     if (Serial.available())
         SerialBT.write(Serial.read());
-
-    if (SerialBT.available())
+    BTreceived = SerialBT.available();
+    BTconnected = SerialBT.connected();
+    if (BTreceived)
     {
         String Message = "";
         char c;
