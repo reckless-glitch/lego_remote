@@ -13,11 +13,14 @@ bool output = false;
 
 float ENGNInput = 0;
 float SRVOInput = 0;
-bool boostInput = false;
+bool INPUTboost = false;
 bool boostEngaged = false;
-bool lightsInput = false;
-bool lightAenabled = false;
-bool lightBenabled = false;
+bool INPUTlightToggleA = false;
+bool INPUTlightToggleB = false;
+bool INPUTlightToggleC = false;
+bool lightEnabledA = true;
+bool lightEnabledB = true;
+bool lightEnabledC = true;
 
 
 // █  █ ▄▀▀▄ █    ▀█▀▀ ▄▀▀▄ ▄▀▀█ █▀▀▀      ▄▀▀▄ ▄▀▀▄ █▄ █ ▀█▀▀ █▀▀▄ ▄▀▀▄ █
@@ -42,29 +45,35 @@ bool lightBenabled = false;
 // ADC measuring
 
 #define ADC_MAXIMUM 4095
-#define RESISTOR_A 15000
-#define RESISTOR_B 82000
+#define RESISTOR_GND 10000
+#define RESISTOR_VIN 100000
 
-// PINS
-#define VOLTAGE_READ_PIN 35
+// PIN ADC in
+#define VOLTAGE_READ_PIN 35 //---> res A & B
 
-// PWM
-#define PWM_PIN_LED_A 12 //---> drv8833 IN1
-#define PWM_PIN_LED_B 13 //---> drv8833 IN3
+// PINs PWM motors to 7881
+#define PIN_PWM_ENG_1 25 
+#define PIN_PWM_ENG_2 26 
 
-#define PWM_PIN_SRVO_A 26 //---> drv7881 SRVO IN1
-#define PWM_PIN_SRVO_B 27 //---> drv7881 SRVO IN2
+// PINs PWM servo to 7881
+#define PIN_PWM_SRV_1 32 
+#define PIN_PWM_SRV_2 33 
 
-#define PWM_PIN_ENGN_A 32 //---> drv7881 ENGINE IN1
-#define PWM_PIN_ENGN_B 33 //---> drv7881 ENGINE IN1
+// PINs PWM LED to input 8833
+#define PIN_PWM_LED_BOOST 5 
+#define PIN_PWM_LED_A 18 
+#define PIN_PWM_LED_B 19 
+#define PIN_PWM_LED_C 21 
 
-#define PWM_CH_LED_A 1
-#define PWM_CH_LED_B 2
+#define CH_PWM_LED_A 1
+#define CH_PWM_LED_B 2
+#define CH_PWM_LED_C 3
+#define CH_PWM_LED_BOOST 4
 
-#define PWM_CH_SRVO_A 3
-#define PWM_CH_SRVO_B 4
-#define PWM_CH_ENGN_A 5
-#define PWM_CH_ENGN_B 6
+#define CH_PWM_SRVO_A 5
+#define CH_PWM_SRVO_B 6
+#define CH_PWM_ENGN_A 7
+#define CH_PWM_ENGN_B 8
 
 // Setting PWM properties
 #define PWM_FREQ_ENGN 2000
@@ -72,13 +81,20 @@ bool lightBenabled = false;
 #define PWM_FREQ_LED 2000
 #define PWM_RESOL 8
 
+#define LED_MODE_OFF 0
+#define LED_MODE_MANUAL 1
+#define LED_MODE_NO_CONNECTION 2
+#define LED_MODE_LOW_BATTERY 3
+
+uint8_t LEDmode = 1;
+
 int16_t pwmMaxDuty;
 uint16_t dutyCycleLED;
 uint16_t dutyCyleSRVO;
 uint16_t dutyCyleENGN;
 
 Ticker voltageTicker;
-uint8_t voltageUPDATE_TIME = 50;
+uint8_t voltageUpdateTime = 50;
 
 int ADCValue = 0;
 float voltageMeasured = 0;
@@ -103,7 +119,7 @@ void getInputVoltage()
 {
     ADCValue = analogRead(VOLTAGE_READ_PIN);
     voltageMeasured = (VOLTAGE_MEASURED_OFFSET + (VOLTAGE_MEASURED_MAX * ADCValue / ADC_MAXIMUM));
-    voltageInput = voltageMeasured * (RESISTOR_A + RESISTOR_B) / RESISTOR_A;
+    voltageInput = voltageMeasured * (RESISTOR_GND + RESISTOR_VIN) / RESISTOR_GND;
     bluetoothSendPlot(voltageInput);
     bluetoothSendPlot(voltageENGN);
 }
@@ -193,8 +209,8 @@ int16_t setOutputVoltage(uint8_t chA, uint8_t chB, float inputVoltage, float tar
 
 void voltageShutdown()
 {
-    dutyCyleSRVO = setOutputVoltage(PWM_CH_SRVO_A, PWM_CH_SRVO_B, 1, 0, &voltageSRVO);
-    dutyCyleENGN = setOutputVoltage(PWM_CH_ENGN_A, PWM_CH_ENGN_B, 1, 0, &voltageENGN);
+    dutyCyleSRVO = setOutputVoltage(CH_PWM_SRVO_A, CH_PWM_SRVO_B, 1, 0, &voltageSRVO);
+    dutyCyleENGN = setOutputVoltage(CH_PWM_ENGN_A, CH_PWM_ENGN_B, 1, 0, &voltageENGN);
     voltageTicker.detach();
 }
 
@@ -228,15 +244,18 @@ void voltageUpdate()
 
     //set voltage engine
     if (boostEngaged)
-        dutyCyleENGN = setOutputVoltage(PWM_CH_ENGN_A, PWM_CH_ENGN_B, voltageInput, VOLTAGE_OUTPUT_MAX, &voltageENGN);
+        dutyCyleENGN = setOutputVoltage(CH_PWM_ENGN_A, CH_PWM_ENGN_B, voltageInput, VOLTAGE_OUTPUT_MAX, &voltageENGN);
     else
-        dutyCyleENGN = setOutputVoltage(PWM_CH_ENGN_A, PWM_CH_ENGN_B, voltageInput,  VOLTAGE_OUTPUT_DEFAULT * ENGNInput, &voltageENGN);
+        dutyCyleENGN = setOutputVoltage(CH_PWM_ENGN_A, CH_PWM_ENGN_B, voltageInput,  VOLTAGE_OUTPUT_DEFAULT * ENGNInput, &voltageENGN);
 
         // set voltage servo
-    dutyCyleSRVO = setOutputVoltage(PWM_CH_SRVO_A, PWM_CH_SRVO_B,VOLTAGE_OUTPUT_DEFAULT, VOLTAGE_OUTPUT_DEFAULT * SRVOInput,&voltageSRVO);
+    dutyCyleSRVO = setOutputVoltage(CH_PWM_SRVO_A, CH_PWM_SRVO_B,VOLTAGE_OUTPUT_DEFAULT, VOLTAGE_OUTPUT_DEFAULT * SRVOInput,&voltageSRVO);
     
-    setOutput(PWM_CH_LED_A,lightAenabled);
-    setOutput(PWM_CH_LED_B,lightBenabled);
+    setOutput(CH_PWM_LED_BOOST,boostEngaged);
+    setOutput(CH_PWM_LED_A,lightEnabledA);
+    setOutput(CH_PWM_LED_B,lightEnabledB);
+    setOutput(CH_PWM_LED_C,lightEnabledC);
+
 }
 
 void voltageSetup()
@@ -253,16 +272,29 @@ void voltageSetup()
     debugString+="Assuming a " + String(numberOfLipoCells) + " cell lipo Battery , setting pwms";
     delay(500);
 
-    setupPWM(PWM_PIN_LED_A, PWM_CH_LED_A, PWM_FREQ_LED);
-    setupPWM(PWM_PIN_LED_B, PWM_CH_LED_B, PWM_FREQ_LED);
+    setupPWM(PIN_PWM_LED_A, CH_PWM_LED_A, PWM_FREQ_LED);
+    setupPWM(PIN_PWM_LED_B, CH_PWM_LED_B, PWM_FREQ_LED);
+    setupPWM(PIN_PWM_LED_C, CH_PWM_LED_C, PWM_FREQ_LED);
+    setupPWM(PIN_PWM_LED_BOOST, CH_PWM_LED_BOOST, PWM_FREQ_LED);
 
-    setupPWM(PWM_PIN_SRVO_A, PWM_CH_SRVO_A, PWM_FREQ_SRVO);
-    setupPWM(PWM_PIN_SRVO_B, PWM_CH_SRVO_B, PWM_FREQ_SRVO);
+    setupPWM(PIN_PWM_SRV_1, CH_PWM_SRVO_A, PWM_FREQ_SRVO);
+    setupPWM(PIN_PWM_SRV_2, CH_PWM_SRVO_B, PWM_FREQ_SRVO);
 
-    setupPWM(PWM_PIN_ENGN_A, PWM_CH_ENGN_A, PWM_FREQ_ENGN);
-    setupPWM(PWM_PIN_ENGN_B, PWM_CH_ENGN_B, PWM_FREQ_ENGN);
+    setupPWM(PIN_PWM_ENG_1, CH_PWM_ENGN_A, PWM_FREQ_ENGN);
+    setupPWM(PIN_PWM_ENG_2, CH_PWM_ENGN_B, PWM_FREQ_ENGN);
 
-    voltageTicker.attach_ms(voltageUPDATE_TIME, voltageUpdate);
+    voltageTicker.attach_ms(voltageUpdateTime, voltageUpdate);
+
+    //test Led
+
+    setOutput(CH_PWM_LED_A,true);
+    delay(500);
+    setOutput(CH_PWM_LED_B,true);
+    delay(500);
+    setOutput(CH_PWM_LED_C,true);
+    delay(500);
+    setOutput(CH_PWM_LED_BOOST,true);
+    delay(3000);
 }
 
 // █▄ ▄█ ▄▀▀▄ ▀█▀ █▄ █
@@ -295,13 +327,13 @@ void manageBoost()
     lastUpdateTime = systemTime;
     if (boostEngaged)
     {
-        if (boostInput)
+        if (INPUTboost)
         {
             if (boostTimer < updateTime)
             {
                 boostTimer = 0;
                 boostEngaged = false;
-                boostInput = false;
+                INPUTboost = false;
             }
             else
             {
@@ -323,7 +355,7 @@ void manageBoost()
             boostTimer = BOOST_TIME_MAX;
     }
 
-    boostEngaged = (boostInput && boostTimer > 0);
+    boostEngaged = (INPUTboost && boostTimer > 0);
 }
 
 
@@ -336,32 +368,21 @@ void manageLights()
     if(ledCycle==0 && BTconnected) digitalWrite(BUILDIN_LED,HIGH);
     else if(BTreceived) digitalWrite(BUILDIN_LED,HIGH);
     else digitalWrite(BUILDIN_LED,LOW);
-    static uint8_t lightMode =0;
     
-    if(lightsInput)
+    if(INPUTlightToggleA)
     {
-        if(++lightMode>3)
-        lightMode=0; 
-        switch (lightMode)
-        {
-        case 1:
-            lightAenabled = true;
-            lightBenabled = true;
-            break;
-        case 2:
-            lightAenabled = true;
-            lightBenabled = false;
-            break;
-        case 3:
-            lightAenabled = false;
-            lightBenabled = true;
-            break;
-        default:
-            lightAenabled = false;
-            lightBenabled = false;
-            break;
-        }
-        lightsInput=false;
+        lightEnabledA = !lightEnabledA;
+        INPUTlightToggleA=false;
+    } 
+    else if(INPUTlightToggleB)
+    {
+        lightEnabledB = !lightEnabledB;
+        INPUTlightToggleB=false;
+    } 
+    else if(INPUTlightToggleC)
+    {
+        lightEnabledC = !lightEnabledC;
+        INPUTlightToggleC=false;
     }
 }
 
@@ -412,7 +433,7 @@ void update()
         + " /"+String(dutyCyleENGN)
         + " || BST" + (boostEngaged ? ">>" : "--") 
         +String(boostTimer)
-        + " | LGT "+(lightAenabled?"A":"-")+(lightBenabled?"B":"-")
+        + " | (≡ "+(lightEnabledA?"A":"-")+(lightEnabledB?"B":"-")+(lightEnabledC?"C":"-")
         + (shutdown ? " || SHUTDOWN" : "")
     );
 }
@@ -433,7 +454,7 @@ void setup()
 
     pinMode(BUILDIN_LED, OUTPUT);
     //controllerSetup(INPUT_UPDATE_TIME);
-    bluetoothSetup(INPUT_UPDATE_TIME, &ENGNInput, &SRVOInput, &boostInput, &lightsInput);
+    bluetoothSetup(INPUT_UPDATE_TIME, &ENGNInput, &SRVOInput, &INPUTboost, &INPUTlightToggleA, &INPUTlightToggleB, &INPUTlightToggleC);
     voltageSetup();
     updateTicker.attach_ms(UPDATE_TIME, update);
 }

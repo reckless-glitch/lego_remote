@@ -17,19 +17,34 @@ const String bluetoothName = "THE TUMBLER";
 float *speed; 
 float *steer;
  bool *boost; 
- bool *lights;
+ bool *togglelightA;
+ bool *togglelightB;
+ bool *togglelightC;
  bool BTreceived = false;
  bool BTconnected =false;
 
 void processMessage(String *message)
 {
     static bool boostPressed = false;
-    static bool lightPressed = false;
+    static bool inputPressed = false;
     if (message->startsWith("sp "))
     {
         message->remove(0, 3);
-        *speed = constrain(message->toFloat(),-1,1);
+        *speed = message->toFloat();
         //SerialBT.print("speed set " + String(*speed) + ".\n");
+        if(!boostPressed && *speed>1.5f)
+        {
+            boostPressed = true;
+            *boost = true;
+            SerialBT.print("Boost pressed\n");
+        }
+        else if (boostPressed && *speed<1.5f)
+        {
+            boostPressed = false;
+            *boost = false;
+            SerialBT.print("Boost released\n");
+        }
+        *speed = constrain(*speed,-1,1);
     }
     else if (message->startsWith("lr "))
     {
@@ -41,40 +56,34 @@ void processMessage(String *message)
     {
         message->remove(0, 4);
         int input = message->toInt();
-        if (input < 6) // button slider is pushed on the boost side
+    
+        if (input < 30) // button slider is pushed on the left side
         {
-            if (!boostPressed)
+            if(!inputPressed)
             {
-                boostPressed = true;
-                *boost = true;
-                SerialBT.print("Boost pressed\n");
-            }
-            lightPressed = false;
-        }
-        else if (input > 6) // button slider is pushed on the lights side
-        {
-            boostPressed = false;
-            if (*boost)
-            {
-                SerialBT.print("Boost released\n");
-                *boost = false;
-            }
-            if (!lightPressed)
-            {
-                lightPressed = true;
-                *lights = true;
-                SerialBT.print("lights pressed\n");
+                inputPressed=true;
+                *togglelightA=true;
             }
         }
+        else if (input > 35 && input < 60) // button slider is pushed on the center
+        {
+            if(!inputPressed)
+            {
+                 inputPressed=true;
+                 *togglelightB=true;
+            }
+        }
+        else if (input > 70)
+        {
+            if(!inputPressed)
+            {
+                 inputPressed=true;
+                 *togglelightC=true;
+            }
+        } 
         else // button slider is released
         {
-            if (*boost)
-            {
-                SerialBT.print("Boost released\n");
-                *boost = false;
-            }
-            boostPressed = false;
-            lightPressed = false;
+            inputPressed = false;
         }
     }
     else
@@ -119,12 +128,14 @@ void bluetoothUpdate()
     }
 }
 
-void bluetoothSetup(uint16_t inputUpdateTime, float *speedInput, float *steerInput, bool *boostInput, bool *lightsInput)
+void bluetoothSetup(uint16_t inputUpdateTime, float *speedInput, float *steerInput, bool *boostInput, bool *toggleA, bool *toggleB, bool *toggleC)
 {
     speed = speedInput;
     steer = steerInput;
     boost = boostInput;
-    lights = lightsInput;
+    togglelightA = toggleA;
+    togglelightB = toggleB;
+    togglelightC = toggleC;
     SerialBT.begin(bluetoothName); //Bluetooth device name
     Serial.println("bluetooth started, connect to: " + bluetoothName);
     bluetoothTicker.attach_ms(inputUpdateTime, bluetoothUpdate);
